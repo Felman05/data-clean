@@ -387,10 +387,58 @@ def _render_clean() -> None:
 
 def _render_compare() -> None:
     st.header("🔍 Before vs After")
-    if st.session_state["original_df"] is None:
+    orig = st.session_state["original_df"]
+    clean = st.session_state["cleaned_df"]
+    if orig is None or clean is None:
         st.info("Upload a dataset first.")
         return
-    st.info("Comparison section — coming in Task 7.")
+
+    orig_rows, clean_rows = len(orig), len(clean)
+    orig_cols, clean_cols = len(orig.columns), len(clean.columns)
+    removed_rows = orig_rows - clean_rows
+    removed_cols = orig_cols - clean_cols
+
+    log = st.session_state["cleaning_log"]
+    imputed = sum(e["rows_affected"] for e in log if e["action"] == "fill_missing")
+    dupes_dropped = sum(e["rows_affected"] for e in log if e["action"] == "drop_duplicates")
+
+    st.info(
+        f"**Summary:** {removed_rows} rows removed · "
+        f"{imputed} values imputed · "
+        f"{dupes_dropped} duplicates dropped · "
+        f"{removed_cols} columns removed"
+    )
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader(f"Original ({orig_rows} rows × {orig_cols} cols)")
+        st.dataframe(orig, use_container_width=True, height=400)
+    with c2:
+        st.subheader(f"Cleaned ({clean_rows} rows × {clean_cols} cols)")
+        st.dataframe(clean, use_container_width=True, height=400)
+
+    # Highlight cells that changed (shared columns only, first 500 rows for perf)
+    shared_cols = [c for c in clean.columns if c in orig.columns]
+    if shared_cols and len(clean) > 0:
+        st.subheader("Changed Cells (first 500 rows, shared columns)")
+        orig_sub = orig[shared_cols].head(500).reset_index(drop=True)
+        clean_sub = clean[shared_cols].head(500).reset_index(drop=True)
+        min_rows = min(len(orig_sub), len(clean_sub))
+        orig_sub = orig_sub.iloc[:min_rows]
+        clean_sub = clean_sub.iloc[:min_rows]
+
+        def _highlight(row):
+            orig_row = orig_sub.iloc[row.name] if row.name < len(orig_sub) else None
+            styles = []
+            for col in row.index:
+                if orig_row is not None and str(row[col]) != str(orig_row[col]):
+                    styles.append("background-color: #d4edda")
+                else:
+                    styles.append("")
+            return styles
+
+        styled = clean_sub.style.apply(_highlight, axis=1)
+        st.dataframe(styled, use_container_width=True, height=400)
 
 
 def _render_insights() -> None:
