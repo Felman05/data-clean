@@ -7,14 +7,15 @@ from modules.db import test_connection, get_session
 from modules.profiler import profile_dataframe
 import plotly.express as px
 from modules.insights import generate_insights, correlation_matrix
-from modules.cleaner import (
-    fill_missing, drop_duplicates, convert_type,
-    standardize_text, standardize_dates, filter_invalid,
-)
+from modules.visualizer import build_chart
 from modules.repository import (
     insert_dataset, insert_dataset_columns,
     insert_cleaning_action, delete_last_cleaning_action, delete_all_cleaning_actions,
-    insert_insight,
+    insert_insight, insert_chart,
+)
+from modules.cleaner import (
+    fill_missing, drop_duplicates, convert_type,
+    standardize_text, standardize_dates, filter_invalid,
 )
 
 st.set_page_config(page_title="FEDM Data Cleaner", layout="wide", page_icon="🧹")
@@ -508,10 +509,68 @@ def _render_insights() -> None:
 
 def _render_dashboard() -> None:
     st.header("📈 Dashboard")
-    if st.session_state["cleaned_df"] is None:
+    df = st.session_state["cleaned_df"]
+    if df is None:
         st.info("Upload a dataset first.")
         return
-    st.info("Dashboard section — coming in Task 9.")
+
+    num_cols = df.select_dtypes(include="number").columns.tolist()
+    all_cols = df.columns.tolist()
+
+    st.subheader("Add Chart")
+    with st.form("add_chart_form"):
+        fc1, fc2, fc3 = st.columns(3)
+        chart_type = fc1.selectbox("Chart type", ["bar", "line", "pie", "scatter", "histogram"])
+        x_col = fc2.selectbox("X column", all_cols)
+        y_col = fc3.selectbox("Y column (optional for histogram/pie)", ["(none)"] + num_cols)
+        fc4, fc5, fc6 = st.columns(3)
+        agg = fc4.selectbox("Aggregation", ["none", "sum", "mean", "count"])
+        color_col = fc5.selectbox("Color by (optional)", ["(none)"] + all_cols)
+        title = fc6.text_input("Chart title (optional)")
+        submitted = st.form_submit_button("Add Chart")
+
+    if submitted:
+        y = y_col if y_col != "(none)" else None
+        color = color_col if color_col != "(none)" else None
+        try:
+            fig = build_chart(df, chart_type, x_col, y, title, color, agg)
+            chart_cfg = {
+                "chart_type": chart_type, "x_col": x_col, "y_col": y,
+                "color_col": color, "agg": agg, "title": title,
+            }
+            st.session_state["charts"].append({"fig": fig, "cfg": chart_cfg})
+        except Exception as exc:
+            st.error(f"Chart error: {exc}")
+
+    for i, chart_item in enumerate(st.session_state["charts"]):
+        with st.container():
+            st.plotly_chart(chart_item["fig"], use_container_width=True)
+            col_save, col_remove = st.columns([1, 1])
+            with col_save:
+                if st.button(f"💾 Save to DB", key=f"save_chart_{i}"):
+                    did = st.session_state.get("dataset_id")
+                    if not did:
+                        st.warning("Upload must be persisted to DB first.")
+                    else:
+                        try:
+                            cfg = chart_item["cfg"]
+                            session = get_session()
+                            insert_chart(
+                                session, did,
+                                chart_type=cfg["chart_type"],
+                                x_column=cfg["x_col"],
+                                y_column=cfg.get("y_col"),
+                                config={k: v for k, v in cfg.items()},
+                            )
+                            session.close()
+                            st.success("Chart saved to database.")
+                        except Exception as exc:
+                            st.error(f"DB error: {exc}")
+            with col_remove:
+                if st.button(f"🗑 Remove", key=f"remove_chart_{i}"):
+                    st.session_state["charts"].pop(i)
+                    st.rerun()
+            st.divider()
 
 
 def _replay_actions(df: pd.DataFrame, log: list[dict]) -> pd.DataFrame:
