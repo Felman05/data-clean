@@ -5,6 +5,8 @@ from pathlib import Path
 
 from modules.db import test_connection, get_session
 from modules.profiler import profile_dataframe
+import plotly.express as px
+from modules.insights import generate_insights, correlation_matrix
 from modules.cleaner import (
     fill_missing, drop_duplicates, convert_type,
     standardize_text, standardize_dates, filter_invalid,
@@ -12,6 +14,7 @@ from modules.cleaner import (
 from modules.repository import (
     insert_dataset, insert_dataset_columns,
     insert_cleaning_action, delete_last_cleaning_action, delete_all_cleaning_actions,
+    insert_insight,
 )
 
 st.set_page_config(page_title="FEDM Data Cleaner", layout="wide", page_icon="🧹")
@@ -443,10 +446,64 @@ def _render_compare() -> None:
 
 def _render_insights() -> None:
     st.header("💡 Insights")
-    if st.session_state["cleaned_df"] is None:
+    df = st.session_state["cleaned_df"]
+    if df is None:
         st.info("Upload a dataset first.")
         return
-    st.info("Insights section — coming in Task 8.")
+
+    col_options = df.columns.tolist()
+    selected = st.multiselect("Columns to analyse", col_options, default=col_options[:4], key="ins_cols")
+    top_n = st.slider("Top N frequent values (categorical)", 3, 20, 5, key="ins_topn")
+
+    if not selected:
+        st.warning("Select at least one column.")
+        return
+
+    with st.spinner("Generating insights…"):
+        insights = generate_insights(df, selected, top_n)
+
+    if not insights:
+        st.info("No insights generated for the selected columns.")
+        return
+
+    st.subheader("Auto-Generated Bullets")
+    for ins in insights:
+        st.markdown(f"- {ins['description']}")
+
+    num_cols = df.select_dtypes(include="number").columns.tolist()
+    if len(num_cols) >= 2:
+        st.subheader("Correlation Heatmap")
+        corr = correlation_matrix(df)
+        fig = px.imshow(
+            corr,
+            text_auto=".2f",
+            color_continuous_scale="RdBu_r",
+            title="Numeric Column Correlations",
+            aspect="auto",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.divider()
+    if st.button("💾 Save insights to database", key="ins_save"):
+        did = st.session_state.get("dataset_id")
+        if not did:
+            st.warning("No dataset_id — upload was not persisted to DB.")
+        else:
+            try:
+                session = get_session()
+                for ins in insights:
+                    insert_insight(
+                        session,
+                        dataset_id=did,
+                        insight_type=ins["type"],
+                        target_column=ins["column"] if "×" not in ins["column"] else None,
+                        description=ins["description"],
+                        value_numeric=ins.get("value_numeric"),
+                    )
+                session.close()
+                st.success(f"Saved {len(insights)} insights to database.")
+            except Exception as exc:
+                st.error(f"DB error: {exc}")
 
 
 def _render_dashboard() -> None:
