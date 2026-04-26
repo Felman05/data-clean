@@ -4,8 +4,15 @@ import pandas as pd
 from pathlib import Path
 
 from modules.db import test_connection, get_session
-from modules.repository import insert_dataset, insert_dataset_columns
 from modules.profiler import profile_dataframe
+from modules.cleaner import (
+    fill_missing, drop_duplicates, convert_type,
+    standardize_text, standardize_dates, filter_invalid,
+)
+from modules.repository import (
+    insert_dataset, insert_dataset_columns,
+    insert_cleaning_action, delete_last_cleaning_action, delete_all_cleaning_actions,
+)
 
 st.set_page_config(page_title="FEDM Data Cleaner", layout="wide", page_icon="🧹")
 
@@ -83,6 +90,27 @@ def _persist_upload(df: pd.DataFrame, filename: str, file_type: str) -> int:
 
 
 # ── Section renderers ─────────────────────────────────────────────────────────
+
+def _apply_action(new_df: pd.DataFrame, log_entry: dict) -> None:
+    """Update session state and persist the cleaning action to DB."""
+    st.session_state["cleaned_df"] = new_df
+    st.session_state["cleaning_log"].append(log_entry)
+    did = st.session_state.get("dataset_id")
+    if did:
+        try:
+            session = get_session()
+            insert_cleaning_action(
+                session,
+                dataset_id=did,
+                action_type=log_entry["action"],
+                target_column=log_entry["column"] if log_entry["column"] != "—" else None,
+                parameters=log_entry.get("params", {}),
+                rows_affected=log_entry["rows_affected"],
+            )
+            session.close()
+        except Exception:
+            pass  # DB unavailable — in-memory state still valid
+
 
 def _render_upload() -> None:
     st.header("📂 Upload Dataset")
@@ -179,11 +207,182 @@ def _render_profile() -> None:
 
 
 def _render_clean() -> None:
-    st.header("🧼 Data Cleaning")
-    if st.session_state["cleaned_df"] is None:
+    st.header("🧼 Data Cleaning Engine")
+    df = st.session_state["cleaned_df"]
+    if df is None:
         st.info("Upload a dataset first.")
         return
-    st.info("Cleaning section — coming in Task 6.")
+
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "Missing Values", "Duplicates", "Type Conversion",
+        "Text & Dates", "Invalid Data Filter",
+    ])
+
+    # ── Tab 1: Missing values ──────────────────────────────────────────────
+    with tab1:
+        st.subheader("Handle Missing Values")
+        col = st.selectbox("Column", df.columns, key="mv_col")
+        missing_n = int(df[col].isna().sum())
+        st.info(f"{missing_n} missing values in **{col}**")
+        method = st.selectbox(
+            "Method",
+            ["drop_row", "drop_column", "mean", "median", "mode", "custom", "ffill", "bfill"],
+            key="mv_method",
+        )
+        custom_val = None
+        if method == "custom":
+            custom_val = st.text_input("Custom fill value", key="mv_custom")
+        if st.button("Apply", key="mv_apply"):
+            if missing_n == 0:
+                st.warning("No missing values in this column.")
+            else:
+                with st.spinner("Applying…"):
+                    try:
+                        new_df, log = fill_missing(df, col, method, custom_val)
+                        _apply_action(new_df, log)
+                        st.success(f"Done — {log['rows_affected']} values affected.")
+                    except Exception as exc:
+                        st.error(f"Error: {exc}")
+
+    # ── Tab 2: Duplicates ──────────────────────────────────────────────────
+    with tab2:
+        st.subheader("Remove Duplicates")
+        dup_count = int(df.duplicated().sum())
+        st.info(f"{dup_count} duplicate rows detected")
+        subset_cols = st.multiselect("Consider only these columns (leave empty = all)", df.columns, key="dup_subset")
+        keep = st.radio("Keep", ["first", "last", "none"], key="dup_keep")
+        keep_val: str | bool = keep if keep != "none" else False
+        if st.button("Remove Duplicates", key="dup_apply"):
+            with st.spinner("Removing…"):
+                try:
+                    sub = subset_cols if subset_cols else None
+                    new_df, log = drop_duplicates(df, sub, keep_val)
+                    _apply_action(new_df, log)
+                    st.success(f"Removed {log['rows_affected']} duplicate rows.")
+                except Exception as exc:
+                    st.error(f"Error: {exc}")
+
+    # ── Tab 3: Type conversion ─────────────────────────────────────────────
+    with tab3:
+        st.subheader("Convert Column Type")
+        tc_col = st.selectbox("Column", df.columns, key="tc_col")
+        st.caption(f"Current dtype: **{df[tc_col].dtype}**")
+        tc_type = st.selectbox("Target type", ["numeric", "datetime", "string", "category", "boolean"], key="tc_type")
+        tc_fmt = None
+        if tc_type == "datetime":
+            tc_fmt = st.text_input("Date format hint (optional, e.g. %d/%m/%Y)", key="tc_fmt") or None
+        if st.button("Convert", key="tc_apply"):
+            with st.spinner("Converting…"):
+                try:
+                    new_df, log = convert_type(df, tc_col, tc_type, tc_fmt)
+                    _apply_action(new_df, log)
+                    new_dtype = new_df[tc_col].dtype if tc_col in new_df.columns else "dropped"
+                    st.success(f"Converted **{tc_col}** → {new_dtype}. {log['rows_affected']} values coerced to NaN.")
+                except Exception as exc:
+                    st.error(f"Error: {exc}")
+
+    # ── Tab 4: Text & Dates ────────────────────────────────────────────────
+    with tab4:
+        st.subheader("Text Standardization")
+        obj_cols = df.select_dtypes(include="object").columns.tolist()
+        txt_col = st.selectbox("Column", obj_cols if obj_cols else df.columns.tolist(), key="txt_col")
+        ops = st.multiselect("Operations (applied in order)", ["trim", "lowercase", "uppercase", "titlecase"], key="txt_ops")
+        if st.button("Apply Text Ops", key="txt_apply"):
+            if not ops:
+                st.warning("Select at least one operation.")
+            else:
+                with st.spinner("Standardizing text…"):
+                    try:
+                        new_df, log = standardize_text(df, txt_col, ops)
+                        _apply_action(new_df, log)
+                        st.success(f"Applied {ops} to **{txt_col}**.")
+                    except Exception as exc:
+                        st.error(f"Error: {exc}")
+
+        st.divider()
+        st.subheader("Date Standardization")
+        date_col = st.selectbox("Date column", df.columns, key="date_col")
+        date_fmt = st.text_input("Output format", value="%Y-%m-%d", key="date_fmt")
+        if st.button("Standardize Dates", key="date_apply"):
+            with st.spinner("Parsing dates…"):
+                try:
+                    new_df, log = standardize_dates(df, date_col, date_fmt)
+                    _apply_action(new_df, log)
+                    st.success(f"Standardized {log['rows_affected']} date values in **{date_col}**.")
+                except Exception as exc:
+                    st.error(f"Error: {exc}")
+
+    # ── Tab 5: Invalid data filter ─────────────────────────────────────────
+    with tab5:
+        st.subheader("Filter Invalid Values")
+        fi_col = st.selectbox("Column", df.columns, key="fi_col")
+        rule = st.selectbox("Rule type", ["numeric_range", "regex_match", "allowed_values"], key="fi_rule")
+        min_v = max_v = regex_p = allowed_v = None
+        if rule == "numeric_range":
+            c1, c2 = st.columns(2)
+            min_v = c1.number_input("Min (inclusive)", key="fi_min", value=0.0)
+            max_v = c2.number_input("Max (inclusive)", key="fi_max", value=999999.0)
+        elif rule == "regex_match":
+            regex_p = st.text_input("Regex pattern (rows NOT matching are removed)", key="fi_regex")
+        elif rule == "allowed_values":
+            raw = st.text_area("Allowed values (one per line)", key="fi_allowed")
+            allowed_v = [v.strip() for v in raw.splitlines() if v.strip()] if raw else None
+        if st.button("Apply Filter", key="fi_apply"):
+            with st.spinner("Filtering…"):
+                try:
+                    new_df, log = filter_invalid(df, fi_col, rule, min_v, max_v, regex_p, allowed_v)
+                    _apply_action(new_df, log)
+                    st.success(f"Removed {log['rows_affected']} invalid rows from **{fi_col}**.")
+                except Exception as exc:
+                    st.error(f"Error: {exc}")
+
+    # ── Cleaning log + Undo/Reset ──────────────────────────────────────────
+    st.divider()
+    st.subheader("Cleaning Log")
+    log = st.session_state["cleaning_log"]
+    if not log:
+        st.caption("No actions applied yet.")
+    else:
+        log_df = pd.DataFrame(log)[["action", "column", "rows_affected"]]
+        log_df.index = range(1, len(log_df) + 1)
+        st.dataframe(log_df, use_container_width=True)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("↩ Undo Last Action", use_container_width=True):
+            if not log:
+                st.warning("Nothing to undo.")
+            else:
+                orig = st.session_state["original_df"].copy()
+                new_log = log[:-1]
+                replayed = _replay_actions(orig, new_log)
+                st.session_state["cleaned_df"] = replayed
+                st.session_state["cleaning_log"] = new_log
+                did = st.session_state.get("dataset_id")
+                if did:
+                    try:
+                        s = get_session()
+                        delete_last_cleaning_action(s, did)
+                        s.close()
+                    except Exception:
+                        pass
+                st.success("Last action undone.")
+                st.rerun()
+
+    with c2:
+        if st.button("🔄 Reset to Original", use_container_width=True):
+            st.session_state["cleaned_df"] = st.session_state["original_df"].copy()
+            st.session_state["cleaning_log"] = []
+            did = st.session_state.get("dataset_id")
+            if did:
+                try:
+                    s = get_session()
+                    delete_all_cleaning_actions(s, did)
+                    s.close()
+                except Exception:
+                    pass
+            st.success("Reset to original dataset.")
+            st.rerun()
 
 
 def _render_compare() -> None:
@@ -211,7 +410,26 @@ def _render_dashboard() -> None:
 
 
 def _replay_actions(df: pd.DataFrame, log: list[dict]) -> pd.DataFrame:
-    """Replay a cleaning log on df. Stub — full implementation in Task 6."""
+    """Replay a cleaning log list on df, returning the resulting DataFrame."""
+    action_map = {
+        "fill_missing": lambda df, e: fill_missing(df, e["column"], e["params"]["method"], e["params"].get("custom_value"))[0],
+        "drop_duplicates": lambda df, e: drop_duplicates(df, e["params"].get("subset"), e["params"].get("keep", "first"))[0],
+        "convert_type": lambda df, e: convert_type(df, e["column"], e["params"]["target_type"], e["params"].get("datetime_format"))[0],
+        "standardize_text": lambda df, e: standardize_text(df, e["column"], e["params"]["operations"])[0],
+        "standardize_dates": lambda df, e: standardize_dates(df, e["column"], e["params"].get("output_format", "%Y-%m-%d"))[0],
+        "filter_invalid": lambda df, e: filter_invalid(
+            df, e["column"], e["params"]["rule_type"],
+            e["params"].get("min_val"), e["params"].get("max_val"),
+            e["params"].get("regex_pattern"), e["params"].get("allowed_values"),
+        )[0],
+    }
+    for entry in log:
+        handler = action_map.get(entry["action"])
+        if handler:
+            try:
+                df = handler(df, entry)
+            except Exception:
+                pass
     return df
 
 
