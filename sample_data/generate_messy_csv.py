@@ -14,12 +14,11 @@ date_formats = [
 
 rows = []
 for i in range(1, 201):
-    salary = random.choice([
-        random.randint(25000, 180000),
-        None,
-        -500,         # invalid
-        9999999,      # outlier
-    ])
+    salary = random.choices(
+        [random.randint(25000, 180000), None, -500, 9999999],
+        weights=[80, 10, 5, 5],
+        k=1,
+    )[0]
     dept = random.choice(departments)
     if random.random() < 0.05:
         dept = None
@@ -40,12 +39,16 @@ for i in range(1, 201):
         "hire_date": hire,
         "status": status,
         "email": email,
-        "years_experience": random.choice([random.randint(0, 35), None, -2]),
+        "years_experience": random.choices(
+            [random.randint(0, 35), None, -2, -5],
+            weights=[80, 10, 5, 5],
+            k=1,
+        )[0],
     })
 
 # Inject 15 exact duplicates
 for _ in range(15):
-    rows.append(random.choice(rows[:100]))
+    rows.append(random.choice(rows[:200]))
 
 df = pd.DataFrame(rows)
 out = Path(__file__).parent / "messy_employees.csv"
