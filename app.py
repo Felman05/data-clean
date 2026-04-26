@@ -5,6 +5,7 @@ from pathlib import Path
 
 from modules.db import test_connection, get_session
 from modules.repository import insert_dataset, insert_dataset_columns
+from modules.profiler import profile_dataframe
 
 st.set_page_config(page_title="FEDM Data Cleaner", layout="wide", page_icon="🧹")
 
@@ -142,10 +143,39 @@ def _render_upload() -> None:
 
 def _render_profile() -> None:
     st.header("📊 Data Profile")
-    if st.session_state["original_df"] is None:
+    df = st.session_state["original_df"]
+    if df is None:
         st.info("Upload a dataset first.")
         return
-    st.info("Profile section — coming in Task 5.")
+
+    with st.spinner("Profiling data…"):
+        profile = profile_dataframe(df)
+
+    ov = profile["overview"]
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Rows", f"{ov['rows']:,}")
+    c2.metric("Columns", ov["columns"])
+    c3.metric("Memory", f"{ov['memory_bytes'] / 1024:.1f} KB")
+    c4.metric("Duplicate Rows", ov["duplicate_rows"])
+
+    st.subheader("Column Details")
+    for col_profile in profile["columns"]:
+        with st.expander(f"**{col_profile['name']}** — {col_profile['dtype']}"):
+            mc1, mc2, mc3 = st.columns(3)
+            mc1.metric("Missing", f"{col_profile['missing_count']} ({col_profile['missing_pct']}%)")
+            mc2.metric("Unique", col_profile["unique_count"])
+            mc3.metric("Dtype", col_profile["dtype"])
+
+            if "mean" in col_profile:
+                nc1, nc2, nc3, nc4, nc5 = st.columns(5)
+                nc1.metric("Mean", col_profile["mean"])
+                nc2.metric("Median", col_profile["median"])
+                nc3.metric("Min", col_profile["min"])
+                nc4.metric("Max", col_profile["max"])
+                nc5.metric("Std Dev", col_profile["std"])
+            elif "top_values" in col_profile:
+                top_df = pd.DataFrame(col_profile["top_values"])
+                st.table(top_df.rename(columns={"value": "Value", "count": "Count"}))
 
 
 def _render_clean() -> None:
