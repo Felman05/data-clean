@@ -1,4 +1,4 @@
-"""Main Streamlit application — Data Cleaning and Analytics System (BAT403)."""
+"""Main Streamlit application — Refine Data Studio."""
 import streamlit as st
 import pandas as pd
 from pathlib import Path
@@ -18,7 +18,236 @@ from modules.cleaner import (
     standardize_text, standardize_dates, filter_invalid,
 )
 
-st.set_page_config(page_title="FEDM Data Cleaner", layout="wide", page_icon="🧹")
+st.set_page_config(page_title="Refine — Data Studio", layout="wide", page_icon="◈")
+
+# ── Global styles ─────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Syne:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ── Reset & Base ──────────────────────────────────────────────────────────── */
+html, body, [class*="css"] { font-family: 'DM Sans', sans-serif !important; }
+.stApp { background: #F1F4FB; }
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+[data-testid="stHeader"] { background: transparent; border-bottom: none; height: 0; }
+.stDeployButton { display: none !important; }
+
+/* ── Sidebar ───────────────────────────────────────────────────────────────── */
+[data-testid="stSidebar"] {
+    background: #0C1524 !important;
+    border-right: 1px solid #17253A;
+    min-width: 220px !important;
+    max-width: 220px !important;
+}
+[data-testid="stSidebar"] > div:first-child { padding-top: 0; }
+[data-testid="stSidebarContent"] { padding: 0; }
+
+/* sidebar nav buttons */
+[data-testid="stSidebar"] .stButton > button {
+    background: transparent !important;
+    border: none !important;
+    color: #64748B !important;
+    text-align: left !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-size: 0.88rem !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.01em !important;
+    border-radius: 8px !important;
+    padding: 0.55rem 1rem !important;
+    width: 100% !important;
+    transition: all 0.15s ease !important;
+    box-shadow: none !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover {
+    background: rgba(99,102,241,0.12) !important;
+    color: #A5B4FC !important;
+    box-shadow: none !important;
+}
+[data-testid="stSidebar"] .stButton > button:focus {
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+/* ── Main content area ─────────────────────────────────────────────────────── */
+.main .block-container {
+    padding: 2.5rem 3rem 3rem 3rem;
+    max-width: 1440px;
+}
+
+/* ── Typography ────────────────────────────────────────────────────────────── */
+h1 {
+    font-family: 'Syne', sans-serif !important;
+    font-weight: 800 !important;
+    font-size: 1.6rem !important;
+    color: #0F172A !important;
+    letter-spacing: -0.03em !important;
+    margin-bottom: 0.25rem !important;
+    line-height: 1.2 !important;
+}
+h2, h3 {
+    font-family: 'Syne', sans-serif !important;
+    font-weight: 700 !important;
+    color: #1E293B !important;
+    letter-spacing: -0.02em !important;
+}
+h2 { font-size: 1.1rem !important; }
+h3 { font-size: 1rem !important; }
+p, li, label, .stMarkdown { color: #334155; font-size: 0.9rem; }
+
+/* ── Metric cards ──────────────────────────────────────────────────────────── */
+[data-testid="stMetric"] {
+    background: white;
+    padding: 1.1rem 1.4rem 1.1rem 1.2rem;
+    border-radius: 12px;
+    border: 1px solid #E8EDF5;
+    border-left: 3px solid #6366F1;
+    box-shadow: 0 1px 3px rgba(15,23,42,0.05), 0 4px 20px rgba(15,23,42,0.03);
+}
+[data-testid="stMetricLabel"] > div {
+    font-size: 0.7rem !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.07em !important;
+    color: #94A3B8 !important;
+}
+[data-testid="stMetricValue"] > div {
+    font-family: 'Syne', sans-serif !important;
+    font-size: 1.65rem !important;
+    font-weight: 700 !important;
+    color: #0F172A !important;
+    letter-spacing: -0.02em !important;
+}
+
+/* ── Buttons (main) ────────────────────────────────────────────────────────── */
+.main .stButton > button {
+    background: #6366F1 !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-weight: 500 !important;
+    font-size: 0.875rem !important;
+    padding: 0.45rem 1.2rem !important;
+    transition: all 0.15s ease !important;
+    box-shadow: 0 1px 3px rgba(99,102,241,0.3) !important;
+}
+.main .stButton > button:hover {
+    background: #4F46E5 !important;
+    box-shadow: 0 4px 14px rgba(99,102,241,0.4) !important;
+    transform: translateY(-1px) !important;
+}
+.main .stButton > button:active { transform: translateY(0) !important; }
+
+/* ── Tabs ──────────────────────────────────────────────────────────────────── */
+.stTabs [data-baseweb="tab-list"] {
+    background: transparent;
+    border-bottom: 2px solid #E2E8F0;
+    gap: 0;
+}
+.stTabs [data-baseweb="tab"] {
+    font-family: 'DM Sans', sans-serif !important;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    color: #64748B;
+    padding: 0.65rem 1.1rem;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    background: transparent;
+}
+.stTabs [aria-selected="true"] {
+    color: #6366F1 !important;
+    border-bottom: 2px solid #6366F1 !important;
+    background: transparent !important;
+}
+
+/* ── Inputs ────────────────────────────────────────────────────────────────── */
+.stSelectbox label, .stMultiselect label, .stTextInput label,
+.stTextArea label, .stSlider label, .stRadio label, .stNumberInput label {
+    font-size: 0.8rem !important;
+    font-weight: 600 !important;
+    color: #475569 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+}
+[data-baseweb="select"] > div,
+.stTextInput input,
+.stTextArea textarea,
+.stNumberInput input {
+    background: white !important;
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 8px !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-size: 0.875rem !important;
+    color: #1E293B !important;
+}
+
+/* ── File uploader ─────────────────────────────────────────────────────────── */
+[data-testid="stFileUploader"] {
+    background: white;
+    border: 2px dashed #CBD5E1;
+    border-radius: 12px;
+    transition: border-color 0.2s ease;
+}
+[data-testid="stFileUploader"]:hover { border-color: #6366F1; }
+[data-testid="stFileUploadDropzone"] {
+    background: white !important;
+    border-radius: 12px;
+}
+
+/* ── Expanders ─────────────────────────────────────────────────────────────── */
+[data-testid="stExpander"] {
+    background: white;
+    border: 1px solid #E8EDF5 !important;
+    border-radius: 10px !important;
+    margin-bottom: 0.4rem;
+    box-shadow: 0 1px 3px rgba(15,23,42,0.04);
+}
+.streamlit-expanderHeader {
+    font-family: 'DM Sans', sans-serif !important;
+    font-weight: 500 !important;
+    color: #1E293B !important;
+    font-size: 0.875rem !important;
+}
+
+/* ── DataFrames ────────────────────────────────────────────────────────────── */
+[data-testid="stDataFrame"] {
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #E8EDF5;
+    box-shadow: 0 1px 3px rgba(15,23,42,0.05);
+}
+
+/* ── Alerts ────────────────────────────────────────────────────────────────── */
+[data-testid="stAlert"] {
+    border-radius: 8px !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-size: 0.875rem !important;
+}
+
+/* ── Form ──────────────────────────────────────────────────────────────────── */
+[data-testid="stForm"] {
+    background: white;
+    border: 1px solid #E8EDF5;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 1px 3px rgba(15,23,42,0.04);
+}
+
+/* ── Divider ───────────────────────────────────────────────────────────────── */
+hr { border-color: #E8EDF5 !important; margin: 1.5rem 0 !important; }
+
+/* ── Code ──────────────────────────────────────────────────────────────────── */
+code, pre { font-family: 'JetBrains Mono', monospace !important; font-size: 0.82rem !important; }
+
+/* ── Info/success chips in sidebar ────────────────────────────────────────── */
+[data-testid="stSidebar"] [data-testid="stAlert"] {
+    font-size: 0.75rem !important;
+    padding: 0.4rem 0.7rem !important;
+    border-radius: 6px !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ── Session state defaults ────────────────────────────────────────────────────
 _DEFAULTS: dict = {
@@ -36,20 +265,43 @@ for key, val in _DEFAULTS.items():
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("🧹 FEDM Data Cleaner")
-    st.caption("BAT403 — Enterprise Data Management")
+    # Brand logo
+    st.markdown("""
+    <div style="padding:1.8rem 1.2rem 1.4rem 1.2rem; border-bottom:1px solid #17253A; margin-bottom:1rem;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:3px;">
+            <div style="width:30px;height:30px;background:linear-gradient(135deg,#6366F1 0%,#8B5CF6 100%);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;color:white;font-weight:900;flex-shrink:0;">◈</div>
+            <span style="font-family:'Syne',sans-serif;font-size:1.15rem;font-weight:800;color:#F1F5F9;letter-spacing:-0.03em;">Refine</span>
+        </div>
+        <span style="font-size:0.68rem;color:#334155;letter-spacing:0.08em;text-transform:uppercase;font-weight:600;padding-left:40px;">Data Studio</span>
+    </div>
+    """, unsafe_allow_html=True)
 
+    # DB status indicator
     ok, db_msg = test_connection()
     if ok:
-        st.success(db_msg)
+        st.markdown("""<div style="margin:0 1rem 1rem 1rem;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:7px;padding:6px 10px;font-size:0.72rem;font-weight:600;color:#10B981;letter-spacing:0.02em;">● DB Connected</div>""", unsafe_allow_html=True)
     else:
-        st.warning(db_msg)
+        st.markdown("""<div style="margin:0 1rem 1rem 1rem;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:7px;padding:6px 10px;font-size:0.72rem;font-weight:600;color:#F59E0B;letter-spacing:0.02em;">● DB Offline</div>""", unsafe_allow_html=True)
 
-    st.divider()
-    sections = ["Upload", "Profile", "Clean", "Compare", "Insights", "Dashboard"]
-    for sec in sections:
-        if st.button(sec, use_container_width=True, key=f"nav_{sec}"):
+    # Navigation
+    st.markdown('<div style="padding:0 0.6rem;">', unsafe_allow_html=True)
+    nav_items = [
+        ("Upload",    "↑", "Upload"),
+        ("Profile",   "◎", "Profile"),
+        ("Clean",     "✦", "Clean"),
+        ("Compare",   "⊟", "Compare"),
+        ("Insights",  "◈", "Insights"),
+        ("Dashboard", "▦", "Dashboard"),
+    ]
+    current = st.session_state["section"]
+    for sec, icon, label in nav_items:
+        is_active = sec == current
+        if is_active:
+            st.markdown(f"""<div style="background:rgba(99,102,241,0.15);border-radius:8px;padding:0.55rem 1rem;margin-bottom:2px;font-family:'DM Sans',sans-serif;font-size:0.88rem;font-weight:600;color:#A5B4FC;letter-spacing:0.01em;">{icon}&nbsp;&nbsp;{label}</div>""", unsafe_allow_html=True)
+        if st.button(f"{icon}  {label}", use_container_width=True, key=f"nav_{sec}"):
             st.session_state["section"] = sec
+            st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ── Upload helpers ────────────────────────────────────────────────────────────
 UPLOAD_DIR = Path("storage/uploads")
@@ -116,8 +368,17 @@ def _apply_action(new_df: pd.DataFrame, log_entry: dict) -> None:
             pass  # DB unavailable — in-memory state still valid
 
 
+def _section_header(title: str, subtitle: str) -> None:
+    st.markdown(f"""
+    <div style="margin-bottom:2rem;padding-bottom:1rem;border-bottom:1px solid #E8EDF5;">
+        <h1 style="margin:0 0 4px 0;">{title}</h1>
+        <p style="margin:0;font-size:0.85rem;color:#94A3B8;font-weight:400;">{subtitle}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def _render_upload() -> None:
-    st.header("📂 Upload Dataset")
+    _section_header("Upload", "Import a CSV or Excel file to get started")
     col_a, col_b = st.columns([3, 1])
 
     with col_a:
@@ -165,16 +426,16 @@ def _render_upload() -> None:
                 st.error(f"Could not read file: {exc}")
 
     if st.session_state["original_df"] is not None:
-        st.subheader("Preview")
+        st.markdown('<p style="font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:#94A3B8;margin-bottom:0.5rem;">Preview</p>', unsafe_allow_html=True)
         st.dataframe(
             st.session_state["original_df"],
             use_container_width=True,
-            height=400,
+            height=420,
         )
 
 
 def _render_profile() -> None:
-    st.header("📊 Data Profile")
+    _section_header("Profile", "Statistical overview of your dataset")
     df = st.session_state["original_df"]
     if df is None:
         st.info("Upload a dataset first.")
@@ -211,7 +472,7 @@ def _render_profile() -> None:
 
 
 def _render_clean() -> None:
-    st.header("🧼 Data Cleaning Engine")
+    _section_header("Clean", "Apply transformations to fix quality issues")
     df = st.session_state["cleaned_df"]
     if df is None:
         st.info("Upload a dataset first.")
@@ -390,7 +651,7 @@ def _render_clean() -> None:
 
 
 def _render_compare() -> None:
-    st.header("🔍 Before vs After")
+    _section_header("Compare", "Side-by-side diff of original vs cleaned data")
     orig = st.session_state["original_df"]
     clean = st.session_state["cleaned_df"]
     if orig is None or clean is None:
@@ -446,7 +707,7 @@ def _render_compare() -> None:
 
 
 def _render_insights() -> None:
-    st.header("💡 Insights")
+    _section_header("Insights", "Auto-generated statistics and correlations")
     df = st.session_state["cleaned_df"]
     if df is None:
         st.info("Upload a dataset first.")
@@ -508,7 +769,7 @@ def _render_insights() -> None:
 
 
 def _render_dashboard() -> None:
-    st.header("📈 Dashboard")
+    _section_header("Dashboard", "Build interactive charts from your cleaned data")
     df = st.session_state["cleaned_df"]
     if df is None:
         st.info("Upload a dataset first.")
