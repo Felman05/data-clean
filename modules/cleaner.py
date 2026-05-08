@@ -261,3 +261,70 @@ def filter_invalid(
         rule_type=rule_type, min_val=min_val, max_val=max_val,
         regex_pattern=regex_pattern, allowed_values=allowed_values,
     )
+
+
+# ── Auto-clean (intelligent one-shot cleaning) ────────────────────────────────
+
+def auto_clean(df: pd.DataFrame) -> tuple[pd.DataFrame, list[dict]]:
+    """
+    Automatically apply common cleaning operations across all columns.
+    Returns (cleaned_df, list_of_log_entries) for batch processing.
+
+    Steps:
+    1. Remove exact duplicate rows
+    2. For each column with missing values:
+       - Numeric columns: fill with median
+       - Categorical/text columns: fill with mode
+    3. For object/string columns: trim whitespace + lowercase
+    4. Attempt date standardization on columns with "date" in name
+    5. Remove rows with duplicate values in key columns
+
+    This provides a reasonable default cleaning suitable for most datasets
+    without requiring user interaction.
+    """
+    out = df.copy()
+    logs = []
+
+    # Step 1: Remove duplicates
+    before = len(out)
+    out = out.drop_duplicates().reset_index(drop=True)
+    dup_removed = before - len(out)
+    if dup_removed > 0:
+        logs.append(_entry("drop_duplicates", None, dup_removed, subset=None, keep="first"))
+
+    # Step 2: Fill missing values intelligently
+    for col in out.columns:
+        missing_count = int(out[col].isna().sum())
+        if missing_count == 0:
+            continue
+
+        if pd.api.types.is_numeric_dtype(out[col]):
+            median_val = out[col].median()
+            if pd.notna(median_val):
+                out[col] = out[col].fillna(median_val)
+                logs.append(_entry("fill_missing", col, missing_count, method="median"))
+        else:
+            mode_vals = out[col].dropna().mode()
+            if len(mode_vals) > 0:
+                mode_val = mode_vals.iloc[0]
+                out[col] = out[col].fillna(mode_val)
+                logs.append(_entry("fill_missing", col, missing_count, method="mode"))
+
+    # Step 3: Standardize text columns (trim + lowercase)
+    for col in out.columns:
+        if pd.api.types.is_object_dtype(out[col]):
+            out[col] = out[col].astype(str).str.strip().str.lower()
+            logs.append(_entry("standardize_text", col, len(out), operations=["trim", "lowercase"]))
+
+    # Step 4: Standardize date columns (detect by name)
+    for col in out.columns:
+        if "date" in col.lower():
+            try:
+                parsed = pd.to_datetime(out[col], errors="coerce", infer_datetime_format=True)
+                if parsed.notna().sum() > 0:
+                    out[col] = parsed.dt.strftime("%Y-%m-%d").where(parsed.notna(), other=pd.NA)
+                    logs.append(_entry("standardize_dates", col, int(parsed.notna().sum()), output_format="%Y-%m-%d"))
+            except Exception:
+                pass
+
+    return out, logs

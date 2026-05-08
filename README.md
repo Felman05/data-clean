@@ -96,3 +96,4 @@ Use the sidebar to navigate between sections. Cleaning state persists across nav
 | Type Conversion | numeric, datetime, string, category, boolean |
 | Text & Dates | trim, lowercase/uppercase/titlecase, ISO date normalization |
 | Invalid Data Filter | numeric range, regex match, allowed values list |
+"# data-clean" 

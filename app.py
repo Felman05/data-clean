@@ -15,7 +15,7 @@ from modules.repository import (
 )
 from modules.cleaner import (
     fill_missing, drop_duplicates, convert_type,
-    standardize_text, standardize_dates, filter_invalid,
+    standardize_text, standardize_dates, filter_invalid, auto_clean,
 )
 
 st.set_page_config(page_title="Refine — Data Studio", layout="wide", page_icon="◈")
@@ -477,6 +477,57 @@ def _render_clean() -> None:
     if df is None:
         st.info("Upload a dataset first.")
         return
+
+    # ── Auto-Clean button (top of page) ────────────────────────────────────────
+    with st.container():
+        st.subheader("🚀 Auto-Clean")
+        st.caption("Automatically apply intelligent cleaning to your entire dataset")
+        col_ac1, col_ac2 = st.columns([2, 1])
+        with col_ac2:
+            if st.button("Run Auto-Clean", use_container_width=True, type="primary"):
+                with st.spinner("Auto-cleaning dataset…"):
+                    try:
+                        cleaned_df, logs = auto_clean(df)
+                        st.session_state["cleaned_df"] = cleaned_df
+                        st.session_state["cleaning_log"].extend(logs)
+                        
+                        # Persist to database
+                        did = st.session_state.get("dataset_id")
+                        if did:
+                            try:
+                                session = get_session()
+                                for log in logs:
+                                    insert_cleaning_action(
+                                        session,
+                                        dataset_id=did,
+                                        action_type=log["action"],
+                                        target_column=log["column"] if log["column"] != "—" else None,
+                                        parameters=log.get("params", {}),
+                                        rows_affected=log["rows_affected"],
+                                    )
+                                session.close()
+                            except Exception:
+                                pass
+                        
+                        # Show summary
+                        total_rows_affected = sum(log["rows_affected"] for log in logs)
+                        st.success(f"✓ Auto-clean complete! {len(logs)} actions applied, {total_rows_affected} rows affected.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Error: {exc}")
+        
+        with col_ac1:
+            with st.expander("What does auto-clean do?"):
+                st.markdown("""
+                **Auto-Clean performs the following steps:**
+                1. **Remove duplicates** — Exact row duplicates
+                2. **Fill missing values** — Median for numeric, mode for categorical
+                3. **Standardize text** — Trim whitespace, convert to lowercase
+                4. **Standardize dates** — Detect date columns and convert to ISO format (YYYY-MM-DD)
+                5. **One-shot operation** — No manual decisions needed!
+                """)
+    
+    st.divider()
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "Missing Values", "Duplicates", "Type Conversion",
