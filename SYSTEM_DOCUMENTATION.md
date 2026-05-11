@@ -75,7 +75,7 @@ Refine is a modern web application built on Streamlit (Python framework) with a 
 3. **Clean**: Apply 6 cleaning transformations with side-by-side diff view
 4. **Compare**: Before/after visualization with cell-level highlighting
 5. **Insights**: Auto-generated statistical findings and correlation heatmap
-6. **Dashboard**: Build custom interactive charts from cleaned data
+6. **Dashboard**: Automatically generate interactive charts from cleaned data
 
 **Technology Stack:**
 ```
@@ -106,7 +106,7 @@ COMPARE
 INSIGHTS
   ↓ (auto-generate findings)
 DASHBOARD
-  ↓ (build custom visualizations)
+  ↓ (auto-generate visualizations)
 ```
 
 ### Detailed Step Explanation
@@ -203,19 +203,14 @@ Automated analysis generating:
 ---
 
 #### Step 6: **Dashboard**
-User builds custom visualizations by:
-1. Selecting chart type (bar, line, pie, scatter, histogram)
-2. Choosing X-axis column (categorical)
-3. Choosing Y-axis column (numeric, optional)
-4. Selecting aggregation method (sum, mean, count)
-5. Saving chart configuration to database
+Dashboard visualizations are generated automatically from the cleaned dataset.
 
 Charts are:
 - Interactive (Plotly): hover data, zoom, pan
-- Persistent: saved to database, can reload later
-- Composable: build multiple charts from same dataset
+- Automatic: derived from numeric, categorical, and correlation patterns
+- Readable: arranged in a simple gallery layout
 
-**Output:** Interactive Plotly visualization, chart config stored
+**Output:** Auto-generated Plotly visualizations
 
 ---
 
@@ -722,7 +717,7 @@ fedm-proj/
 │       ├── insert_dataset()   → Save dataset metadata
 │       ├── insert_cleaning_action() → Log transformations
 │       ├── insert_insight()   → Save findings
-│       └── insert_chart()     → Save chart configuration
+│       └── insert_chart()     → Legacy chart persistence
 │
 ├── database/
 │   └── schema.sql            # 5 table definitions
@@ -730,7 +725,7 @@ fedm-proj/
 │       ├── dataset_columns   # Per-column profile
 │       ├── cleaning_actions  # Transformation log
 │       ├── insights          # Generated findings
-│       └── dashboard_charts  # Saved visualizations
+│       └── dashboard_charts  # Auto-generated visualizations
 │
 ├── sample_data/
 │   └── messy_employees.csv   # Sample dataset (215 rows, 8 cols)
@@ -762,7 +757,7 @@ fedm-proj/
    └─ Each transformation logged to database
 4. Compare shows before/after with cell highlighting
 5. Insights auto-generated from cleaned data
-6. Dashboard allows building multiple interactive charts
+6. Dashboard automatically generates multiple interactive charts
 ```
 
 **Database Persistence:**
@@ -772,7 +767,7 @@ Every action saved to MySQL:
 ├─ Dataset_columns = 1 row per column with stats
 ├─ Cleaning_actions = 1 row per transformation
 ├─ Insights = auto-generated findings
-└─ Dashboard_charts = user-built visualizations
+└─ Dashboard_charts = auto-generated visualizations
 
 Benefits:
 └─ Undo/redo support (query action history)
