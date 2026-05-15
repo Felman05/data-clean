@@ -832,13 +832,52 @@ def _render_insights() -> None:
                 st.error(f"DB error: {exc}")
 
 
-def _render_dashboard() -> None:
-    _section_header("Dashboard", "Build interactive charts from your cleaned data")
-    df = st.session_state["cleaned_df"]
-    if df is None:
-        st.info("Upload a dataset first.")
+def _render_auto_charts(df: pd.DataFrame) -> None:
+    num_cols = df.select_dtypes(include="number").columns.tolist()
+    cat_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
+    date_cols = df.select_dtypes(include=["datetime", "datetimetz"]).columns.tolist()
+
+    charts = []
+
+    if num_cols:
+        charts.append(build_chart(df, "histogram", num_cols[0],
+                                  title=f"Distribution of {num_cols[0]}"))
+
+    if cat_cols:
+        col = cat_cols[0]
+        top10 = df[col].value_counts().head(10).reset_index()
+        top10.columns = [col, "count"]
+        charts.append(build_chart(top10, "bar", col, "count",
+                                  title=f"Top 10 — {col}"))
+
+    if date_cols and num_cols:
+        sorted_df = df.sort_values(date_cols[0])
+        charts.append(build_chart(sorted_df, "line", date_cols[0], num_cols[0],
+                                  title=f"{num_cols[0]} over time"))
+
+    if len(num_cols) >= 2:
+        charts.append(build_chart(df, "scatter", num_cols[0], num_cols[1],
+                                  title=f"{num_cols[0]} vs {num_cols[1]}"))
+
+    pie_col = next((c for c in cat_cols if df[c].nunique() <= 8), None)
+    if pie_col:
+        pie_data = df[pie_col].value_counts().reset_index()
+        pie_data.columns = [pie_col, "count"]
+        charts.append(build_chart(pie_data, "pie", pie_col, "count",
+                                  title=f"{pie_col} breakdown"))
+
+    if not charts:
+        st.info("No suitable columns found for auto-charts. Use the Custom Charts tab to build manually.")
         return
 
+    for i in range(0, len(charts), 2):
+        left, right = st.columns(2)
+        left.plotly_chart(charts[i], use_container_width=True)
+        if i + 1 < len(charts):
+            right.plotly_chart(charts[i + 1], use_container_width=True)
+
+
+def _render_custom_chart_builder(df: pd.DataFrame) -> None:
     all_cols = df.columns.tolist()
 
     st.subheader("Add Chart")
@@ -846,7 +885,8 @@ def _render_dashboard() -> None:
         fc1, fc2, fc3 = st.columns(3)
         chart_type = fc1.selectbox("Chart type", ["bar", "line", "pie", "scatter", "histogram"])
         x_col = fc2.selectbox("X column", all_cols)
-        y_col = fc3.selectbox("Y column (optional for histogram/pie)", ["(none)"] + df.select_dtypes(include="number").columns.tolist())
+        y_col = fc3.selectbox("Y column (optional for histogram/pie)",
+                              ["(none)"] + df.select_dtypes(include="number").columns.tolist())
         fc4, fc5, fc6 = st.columns(3)
         agg = fc4.selectbox("Aggregation", ["none", "sum", "mean", "count"])
         color_col = fc5.selectbox("Color by (optional)", ["(none)"] + all_cols)
@@ -871,7 +911,7 @@ def _render_dashboard() -> None:
             st.plotly_chart(chart_item["fig"], use_container_width=True)
             col_save, col_remove = st.columns([1, 1])
             with col_save:
-                if st.button(f"💾 Save to DB", key=f"save_chart_{i}"):
+                if st.button("💾 Save to DB", key=f"save_chart_{i}"):
                     did = st.session_state.get("dataset_id")
                     if not did:
                         st.warning("Upload must be persisted to DB first.")
@@ -891,10 +931,53 @@ def _render_dashboard() -> None:
                         except Exception as exc:
                             st.error(f"DB error: {exc}")
             with col_remove:
-                if st.button(f"🗑 Remove", key=f"remove_chart_{i}"):
+                if st.button("🗑 Remove", key=f"remove_chart_{i}"):
                     st.session_state["charts"].pop(i)
                     st.rerun()
             st.divider()
+
+
+def _render_dashboard() -> None:
+    _section_header("Dashboard", "Dataset overview and interactive charts")
+    df = st.session_state["cleaned_df"]
+    orig = st.session_state["original_df"]
+    if df is None:
+        st.info("Upload a dataset first.")
+        return
+
+    fname = st.session_state.get("uploaded_filename") or "data.csv"
+    download_name = f"cleaned_{Path(fname).stem}.csv"
+    st.download_button(
+        label="⬇️ Download Cleaned CSV",
+        data=df.to_csv(index=False).encode("utf-8"),
+        file_name=download_name,
+        mime="text/csv",
+        key="dashboard_download_csv",
+    )
+
+    st.divider()
+
+    log = st.session_state["cleaning_log"]
+    orig_rows = len(orig) if orig is not None else len(df)
+    row_delta = len(df) - orig_rows
+    imputed = sum(e["rows_affected"] for e in log if e["action"] == "fill_missing")
+    dupes_dropped = sum(e["rows_affected"] for e in log if e["action"] == "drop_duplicates")
+    quality = round((df.notna().sum().sum() / df.size) * 100, 1) if df.size > 0 else 0.0
+
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("Rows", len(df), delta=row_delta if row_delta != 0 else None, delta_color="inverse")
+    k2.metric("Missing Filled", imputed)
+    k3.metric("Duplicates Removed", dupes_dropped)
+    k4.metric("Actions Applied", len(log))
+    k5.metric("Data Quality", f"{quality}%")
+
+    st.divider()
+
+    tab_overview, tab_custom = st.tabs(["Overview", "Custom Charts"])
+    with tab_overview:
+        _render_auto_charts(df)
+    with tab_custom:
+        _render_custom_chart_builder(df)
 
 
 def _replay_actions(df: pd.DataFrame, log: list[dict]) -> pd.DataFrame:
