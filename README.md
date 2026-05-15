@@ -39,8 +39,6 @@ streamlit run app.py
 
 Open http://localhost:8501 in your browser.
 
-The Dashboard section automatically generates charts from the cleaned dataset.
-
 ## Generating the Sample Dataset
 
 If `sample_data/messy_employees.csv` is missing:
@@ -87,7 +85,7 @@ Use the sidebar to navigate between sections. Cleaning state persists across nav
 | `dataset_columns` | Per-column metadata for each dataset |
 | `cleaning_actions` | Every cleaning operation, in order (supports undo/replay) |
 | `insights` | Saved plain-English insight bullets |
-| `dashboard_charts` | Auto-generated chart visualizations |
+| `dashboard_charts` | Saved chart configurations |
 
 ## Cleaning Methods
 

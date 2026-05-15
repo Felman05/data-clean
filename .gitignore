@@ -19,3 +19,4 @@ build/
 .streamlit/
 venv/
 documents/
+.superpowers/
