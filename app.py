@@ -46,7 +46,7 @@ footer { visibility: hidden; }
 [data-testid="stSidebar"] .stButton > button {
     background: transparent !important;
     border: none !important;
-    color: #94A3B8 !important;
+    color: #CBD5E1 !important;
     text-align: left !important;
     font-family: 'DM Sans', sans-serif !important;
     font-size: 0.95rem !important;
@@ -271,7 +271,7 @@ with st.sidebar:
             <div style="width:30px;height:30px;background:linear-gradient(135deg,#6366F1 0%,#8B5CF6 100%);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;color:white;font-weight:900;flex-shrink:0;">◈</div>
             <span style="font-family:'Syne',sans-serif;font-size:1.15rem;font-weight:800;color:#F1F5F9;letter-spacing:-0.03em;">Refine</span>
         </div>
-        <span style="font-size:0.72rem;color:#64748B;letter-spacing:0.08em;text-transform:uppercase;font-weight:600;padding-left:40px;">Data Studio</span>
+        <span style="font-size:0.72rem;color:#94A3B8;letter-spacing:0.08em;text-transform:uppercase;font-weight:600;padding-left:40px;">Data Studio</span>
     </div>
     """, unsafe_allow_html=True)
 
