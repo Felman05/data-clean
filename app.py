@@ -30,15 +30,14 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif !important; }
 .stApp { background: #F1F4FB; }
 #MainMenu { visibility: hidden; }
 footer { visibility: hidden; }
-[data-testid="stHeader"] { background: transparent; border-bottom: none; height: 0; }
+[data-testid="stHeader"] { background: transparent !important; border-bottom: none !important; }
 .stDeployButton { display: none !important; }
+[data-testid="stToolbar"] { display: none !important; }
 
 /* ── Sidebar ───────────────────────────────────────────────────────────────── */
 [data-testid="stSidebar"] {
     background: #0C1524 !important;
     border-right: 1px solid #17253A;
-    min-width: 220px !important;
-    max-width: 220px !important;
 }
 [data-testid="stSidebar"] > div:first-child { padding-top: 0; }
 [data-testid="stSidebarContent"] { padding: 0; }
@@ -47,21 +46,21 @@ footer { visibility: hidden; }
 [data-testid="stSidebar"] .stButton > button {
     background: transparent !important;
     border: none !important;
-    color: #64748B !important;
+    color: #94A3B8 !important;
     text-align: left !important;
     font-family: 'DM Sans', sans-serif !important;
-    font-size: 0.88rem !important;
+    font-size: 0.95rem !important;
     font-weight: 500 !important;
     letter-spacing: 0.01em !important;
     border-radius: 8px !important;
-    padding: 0.55rem 1rem !important;
+    padding: 0.6rem 1rem !important;
     width: 100% !important;
     transition: all 0.15s ease !important;
     box-shadow: none !important;
 }
 [data-testid="stSidebar"] .stButton > button:hover {
-    background: rgba(99,102,241,0.12) !important;
-    color: #A5B4FC !important;
+    background: rgba(99,102,241,0.15) !important;
+    color: #C7D2FE !important;
     box-shadow: none !important;
 }
 [data-testid="stSidebar"] .stButton > button:focus {
@@ -79,7 +78,7 @@ footer { visibility: hidden; }
 h1 {
     font-family: 'Syne', sans-serif !important;
     font-weight: 800 !important;
-    font-size: 1.6rem !important;
+    font-size: 2rem !important;
     color: #0F172A !important;
     letter-spacing: -0.03em !important;
     margin-bottom: 0.25rem !important;
@@ -91,9 +90,9 @@ h2, h3 {
     color: #1E293B !important;
     letter-spacing: -0.02em !important;
 }
-h2 { font-size: 1.1rem !important; }
-h3 { font-size: 1rem !important; }
-p, li, label, .stMarkdown { color: #334155; font-size: 0.9rem; }
+h2 { font-size: 1.35rem !important; }
+h3 { font-size: 1.15rem !important; }
+p, li, label, .stMarkdown { color: #1E293B; font-size: 0.95rem; }
 
 /* ── Metric cards ──────────────────────────────────────────────────────────── */
 [data-testid="stMetric"] {
@@ -272,7 +271,7 @@ with st.sidebar:
             <div style="width:30px;height:30px;background:linear-gradient(135deg,#6366F1 0%,#8B5CF6 100%);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;color:white;font-weight:900;flex-shrink:0;">◈</div>
             <span style="font-family:'Syne',sans-serif;font-size:1.15rem;font-weight:800;color:#F1F5F9;letter-spacing:-0.03em;">Refine</span>
         </div>
-        <span style="font-size:0.68rem;color:#334155;letter-spacing:0.08em;text-transform:uppercase;font-weight:600;padding-left:40px;">Data Studio</span>
+        <span style="font-size:0.72rem;color:#64748B;letter-spacing:0.08em;text-transform:uppercase;font-weight:600;padding-left:40px;">Data Studio</span>
     </div>
     """, unsafe_allow_html=True)
 
@@ -297,10 +296,11 @@ with st.sidebar:
     for sec, icon, label in nav_items:
         is_active = sec == current
         if is_active:
-            st.markdown(f"""<div style="background:rgba(99,102,241,0.15);border-radius:8px;padding:0.55rem 1rem;margin-bottom:2px;font-family:'DM Sans',sans-serif;font-size:0.88rem;font-weight:600;color:#A5B4FC;letter-spacing:0.01em;">{icon}&nbsp;&nbsp;{label}</div>""", unsafe_allow_html=True)
-        if st.button(f"{icon}  {label}", use_container_width=True, key=f"nav_{sec}"):
-            st.session_state["section"] = sec
-            st.rerun()
+            st.markdown(f"""<div style="background:rgba(99,102,241,0.18);border-left:3px solid #6366F1;border-radius:8px;padding:0.6rem 1rem;margin-bottom:2px;font-family:'DM Sans',sans-serif;font-size:0.95rem;font-weight:700;color:#C7D2FE;letter-spacing:0.01em;">{icon}&nbsp;&nbsp;{label}</div>""", unsafe_allow_html=True)
+        else:
+            if st.button(f"{icon}  {label}", use_container_width=True, key=f"nav_{sec}"):
+                st.session_state["section"] = sec
+                st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ── Upload helpers ────────────────────────────────────────────────────────────
@@ -377,7 +377,7 @@ def _section_header(title: str, subtitle: str) -> None:
     st.markdown(f"""
     <div style="margin-bottom:2rem;padding-bottom:1rem;border-bottom:1px solid #E8EDF5;">
         <h1 style="margin:0 0 4px 0;">{title}</h1>
-        <p style="margin:0;font-size:0.85rem;color:#94A3B8;font-weight:400;">{subtitle}</p>
+        <p style="margin:0;font-size:0.95rem;color:#64748B;font-weight:400;">{subtitle}</p>
     </div>
     """, unsafe_allow_html=True)
 
