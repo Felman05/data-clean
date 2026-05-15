@@ -32,7 +32,6 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif !important; }
 footer { visibility: hidden; }
 [data-testid="stHeader"] { background: transparent !important; border-bottom: none !important; }
 .stDeployButton { display: none !important; }
-[data-testid="stToolbar"] { display: none !important; }
 
 /* ── Sidebar ───────────────────────────────────────────────────────────────── */
 [data-testid="stSidebar"] {
@@ -93,6 +92,10 @@ h2, h3 {
 h2 { font-size: 1.35rem !important; }
 h3 { font-size: 1.15rem !important; }
 p, li, label, .stMarkdown { color: #1E293B; font-size: 0.95rem; }
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] li,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] .stMarkdown { color: #CBD5E1 !important; }
 
 /* ── Metric cards ──────────────────────────────────────────────────────────── */
 [data-testid="stMetric"] {
