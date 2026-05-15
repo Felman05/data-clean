@@ -766,6 +766,7 @@ def _render_compare() -> None:
         data=clean.to_csv(index=False).encode("utf-8"),
         file_name=download_name,
         mime="text/csv",
+        key="compare_download_csv",
     )
 
 
