@@ -347,6 +347,11 @@ def _persist_upload(df: pd.DataFrame, filename: str, file_type: str) -> int:
 
 # ── Section renderers ─────────────────────────────────────────────────────────
 
+@st.cache_data
+def _df_to_csv(df: pd.DataFrame) -> bytes:
+    return df.to_csv(index=False).encode("utf-8")
+
+
 def _apply_action(new_df: pd.DataFrame, log_entry: dict) -> None:
     """Update session state and persist the cleaning action to DB."""
     st.session_state["cleaned_df"] = new_df
@@ -763,7 +768,7 @@ def _render_compare() -> None:
     download_name = f"cleaned_{Path(fname).stem}.csv"
     st.download_button(
         label="⬇️ Download Cleaned CSV",
-        data=clean.to_csv(index=False).encode("utf-8"),
+        data=_df_to_csv(clean),
         file_name=download_name,
         mime="text/csv",
         key="compare_download_csv",
@@ -871,14 +876,17 @@ def _render_auto_charts(df: pd.DataFrame) -> None:
         return
 
     for i in range(0, len(charts), 2):
-        left, right = st.columns(2)
-        left.plotly_chart(charts[i], use_container_width=True)
-        if i + 1 < len(charts):
-            right.plotly_chart(charts[i + 1], use_container_width=True)
+        pair = charts[i:i + 2]
+        cols = st.columns(len(pair))
+        for col, chart in zip(cols, pair):
+            col.plotly_chart(chart, use_container_width=True)
 
 
 def _render_custom_chart_builder(df: pd.DataFrame) -> None:
     all_cols = df.columns.tolist()
+    if not all_cols:
+        st.warning("No columns available. Re-upload your dataset.")
+        return
 
     st.subheader("Add Chart")
     with st.form("add_chart_form"):
@@ -949,7 +957,7 @@ def _render_dashboard() -> None:
     download_name = f"cleaned_{Path(fname).stem}.csv"
     st.download_button(
         label="⬇️ Download Cleaned CSV",
-        data=df.to_csv(index=False).encode("utf-8"),
+        data=_df_to_csv(df),
         file_name=download_name,
         mime="text/csv",
         key="dashboard_download_csv",
