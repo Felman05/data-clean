@@ -2,7 +2,6 @@
 import streamlit as st
 import pandas as pd
 from pathlib import Path
-from typing import Any
 
 from modules.db import test_connection, get_session
 from modules.profiler import profile_dataframe
@@ -12,7 +11,7 @@ from modules.visualizer import build_chart
 from modules.repository import (
     insert_dataset, insert_dataset_columns,
     insert_cleaning_action, delete_last_cleaning_action, delete_all_cleaning_actions,
-    insert_insight,
+    insert_insight, insert_chart,
 )
 from modules.cleaner import (
     fill_missing, drop_duplicates, convert_type,
@@ -258,6 +257,7 @@ _DEFAULTS: dict = {
     "dataset_id": None,
     "uploaded_filename": None,
     "section": "Upload",
+    "charts": [],
 }
 for key, val in _DEFAULTS.items():
     if key not in st.session_state:
@@ -376,81 +376,6 @@ def _section_header(title: str, subtitle: str) -> None:
     </div>
     """, unsafe_allow_html=True)
 
-
-def _auto_dashboard_charts(df: pd.DataFrame) -> list[dict[str, Any]]:
-    """Build a small set of charts automatically from the cleaned dataset."""
-    charts: list[dict[str, Any]] = []
-    numeric_cols = df.select_dtypes(include="number").columns.tolist()
-    datetime_cols = [col for col in df.columns if pd.api.types.is_datetime64_any_dtype(df[col])]
-    date_like_cols = [
-        col for col in df.columns
-        if "date" in col.lower() and col not in datetime_cols
-    ]
-    categorical_cols = [
-        col for col in df.columns
-        if col not in numeric_cols and col not in datetime_cols and col not in date_like_cols
-    ]
-
-    for col in numeric_cols[:3]:
-        charts.append({
-            "title": f"Distribution of {col}",
-            "subtitle": "Auto-generated histogram for numeric data.",
-            "fig": build_chart(df, "histogram", col, title=f"Distribution of {col}"),
-        })
-
-    for col in categorical_cols[:2]:
-        vc = (
-            df[col]
-            .astype("string")
-            .fillna("Missing")
-            .value_counts()
-            .head(10)
-            .reset_index()
-        )
-        vc.columns = [col, "count"]
-        charts.append({
-            "title": f"Top values in {col}",
-            "subtitle": "Auto-generated frequency breakdown.",
-            "fig": px.bar(vc, x=col, y="count", title=f"Top values in {col}"),
-        })
-
-    if len(numeric_cols) >= 2:
-        x_col, y_col = numeric_cols[:2]
-        charts.append({
-            "title": f"{x_col} vs {y_col}",
-            "subtitle": "Auto-generated relationship view for the first two numeric columns.",
-            "fig": build_chart(df, "scatter", x_col, y_col, title=f"{x_col} vs {y_col}"),
-        })
-
-        corr = correlation_matrix(df[numeric_cols])
-        if not corr.empty and len(corr.columns) >= 2:
-            charts.append({
-                "title": "Correlation matrix",
-                "subtitle": "Auto-generated view of numeric column relationships.",
-                "fig": px.imshow(
-                    corr,
-                    text_auto=".2f",
-                    color_continuous_scale="RdBu_r",
-                    title="Numeric Column Correlations",
-                    aspect="auto",
-                ),
-            })
-
-    if (datetime_cols or date_like_cols) and numeric_cols:
-        date_col = (datetime_cols or date_like_cols)[0]
-        value_col = numeric_cols[0]
-        time_df = df[[date_col, value_col]].copy()
-        if date_col in date_like_cols:
-            time_df[date_col] = pd.to_datetime(time_df[date_col], errors="coerce", infer_datetime_format=True)
-        time_df = time_df.dropna().sort_values(date_col)
-        if not time_df.empty:
-            charts.append({
-                "title": f"{value_col} over {date_col}",
-                "subtitle": "Auto-generated trend view for time-based data.",
-                "fig": px.line(time_df, x=date_col, y=value_col, title=f"{value_col} over {date_col}"),
-            })
-
-    return charts
 
 
 def _render_upload() -> None:
@@ -832,6 +757,17 @@ def _render_compare() -> None:
         styled = clean_sub.style.apply(_highlight, axis=1)
         st.dataframe(styled, use_container_width=True, height=400)
 
+    # ── Download ──────────────────────────────────────────────────────────
+    st.divider()
+    fname = st.session_state.get("uploaded_filename") or "data.csv"
+    download_name = f"cleaned_{Path(fname).stem}.csv"
+    st.download_button(
+        label="⬇️ Download Cleaned CSV",
+        data=clean.to_csv(index=False).encode("utf-8"),
+        file_name=download_name,
+        mime="text/csv",
+    )
+
 
 def _render_insights() -> None:
     _section_header("Insights", "Auto-generated statistics and correlations")
@@ -896,35 +832,68 @@ def _render_insights() -> None:
 
 
 def _render_dashboard() -> None:
-    _section_header("Dashboard", "Automatically generated charts from your cleaned data")
+    _section_header("Dashboard", "Build interactive charts from your cleaned data")
     df = st.session_state["cleaned_df"]
     if df is None:
         st.info("Upload a dataset first.")
         return
 
-    num_cols = df.select_dtypes(include="number").columns.tolist()
-    charts = _auto_dashboard_charts(df)
+    all_cols = df.columns.tolist()
 
-    metric_a, metric_b, metric_c, metric_d = st.columns(4)
-    metric_a.metric("Rows", f"{len(df):,}")
-    metric_b.metric("Columns", f"{len(df.columns):,}")
-    metric_c.metric("Numeric", f"{len(num_cols):,}")
-    metric_d.metric("Charts", f"{len(charts):,}")
+    st.subheader("Add Chart")
+    with st.form("add_chart_form"):
+        fc1, fc2, fc3 = st.columns(3)
+        chart_type = fc1.selectbox("Chart type", ["bar", "line", "pie", "scatter", "histogram"])
+        x_col = fc2.selectbox("X column", all_cols)
+        y_col = fc3.selectbox("Y column (optional for histogram/pie)", ["(none)"] + df.select_dtypes(include="number").columns.tolist())
+        fc4, fc5, fc6 = st.columns(3)
+        agg = fc4.selectbox("Aggregation", ["none", "sum", "mean", "count"])
+        color_col = fc5.selectbox("Color by (optional)", ["(none)"] + all_cols)
+        title = fc6.text_input("Chart title (optional)")
+        submitted = st.form_submit_button("Add Chart")
 
-    st.caption("Charts refresh automatically whenever the cleaned dataset changes.")
+    if submitted:
+        y = y_col if y_col != "(none)" else None
+        color = color_col if color_col != "(none)" else None
+        try:
+            fig = build_chart(df, chart_type, x_col, y, title, color, agg)
+            chart_cfg = {
+                "chart_type": chart_type, "x_col": x_col, "y_col": y,
+                "color_col": color, "agg": agg, "title": title,
+            }
+            st.session_state["charts"].append({"fig": fig, "cfg": chart_cfg})
+        except Exception as exc:
+            st.error(f"Chart error: {exc}")
 
-    if not charts:
-        st.info("Not enough data to generate charts automatically.")
-        return
-
-    for idx in range(0, len(charts), 2):
-        left, right = st.columns(2)
-        pair = charts[idx:idx + 2]
-        for col, chart in zip((left, right), pair):
-            with col:
-                st.markdown(f"**{chart['title']}**")
-                st.caption(chart["subtitle"])
-                st.plotly_chart(chart["fig"], use_container_width=True)
+    for i, chart_item in enumerate(st.session_state["charts"]):
+        with st.container():
+            st.plotly_chart(chart_item["fig"], use_container_width=True)
+            col_save, col_remove = st.columns([1, 1])
+            with col_save:
+                if st.button(f"💾 Save to DB", key=f"save_chart_{i}"):
+                    did = st.session_state.get("dataset_id")
+                    if not did:
+                        st.warning("Upload must be persisted to DB first.")
+                    else:
+                        try:
+                            cfg = chart_item["cfg"]
+                            session = get_session()
+                            insert_chart(
+                                session, did,
+                                chart_type=cfg["chart_type"],
+                                x_column=cfg["x_col"],
+                                y_column=cfg.get("y_col"),
+                                config={k: v for k, v in cfg.items()},
+                            )
+                            session.close()
+                            st.success("Chart saved to database.")
+                        except Exception as exc:
+                            st.error(f"DB error: {exc}")
+            with col_remove:
+                if st.button(f"🗑 Remove", key=f"remove_chart_{i}"):
+                    st.session_state["charts"].pop(i)
+                    st.rerun()
+            st.divider()
 
 
 def _replay_actions(df: pd.DataFrame, log: list[dict]) -> pd.DataFrame:
